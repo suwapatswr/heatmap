@@ -1,0 +1,341 @@
+VOC
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset='utf-8' />
+    <!-- Alphabet characterset. -->
+    <title></title>
+    <!-- Appears on the tab. -->
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+
+    <!-- These add Mapbox GL JS to the document. -->
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.7.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.7.0/mapbox-gl.js"></script>
+
+    <!-- This is CSS (Cascade Style Sheet) styling, which styles your web page by tags, classes and ids. -->
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        /* The body will take up the entire page. */
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        .remote {
+            height: 100px;
+            padding: 20px;
+            padding-left: 10px;
+            background-color: white;
+            border-radius: 20px;
+            border: 1px solid black;
+            position: absolute;
+            top: 45px;
+            right: 50px;
+        }
+
+        /* The map class will take up the entire space. */
+    </style>
+</head>
+
+<body>
+    <div id='map'></div>
+    <div class="remote">
+        <input type="radio" name="val" value="PM2.5" id="PM2.5" checked> PM2.5 <br>
+        <input type="radio" name="val" value="VOC" id="VOC"> VOC <br>
+
+        <input type="radio" name="car" value="CAR 1" id="CAR1" checked>Car1<br>
+        <input type="radio" name="car" value="CAR 2" id="CAR2">Car2 <br>
+        <input type="radio" name="car" value="ALL_CAR" id="ALL_CAR">all Car<br>
+
+
+        <select id="select_date">
+            <option value="0">2017-11-13(MON)</option>
+            <option value="1">2017-11-14(TUE)</option>
+            <option value="2">2017-11-15(WED)</option>
+            <option value="3">2017-11-16(THU)</option>
+            <option value="4">2017-11-17(FRI)</option>
+            <option value="5">2017-11-19(SUN)</option>
+            <option value="6">2017-11-20(MON)</option>
+            <option value="7">2017-11-21(TUE)</option>
+            <option value="8">2017-11-22(WED)</option>
+            <option value="9">2017-11-23(THU)</option>
+            <option value="10">2017-11-24(FRI)</option>
+            <option value="11">2017-11-25(SAT)</option>
+            <option value="12">2017-11-26(SUN)</option>
+        </select><br>
+        <input type="time" name="start_time" id="start_time">
+        <input type="time" name="end_time" id="end_time">
+    </div>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script>
+        var days = ['2017-11-13(MON)', '2017-11-14(TUE)', '2017-11-15(WED)', '2017-11-16(THU)', '2017-11-17(FRI)', '2017-11-19(SUN)', '2017-11-20(MON)',
+            '2017-11-21(TUE)', '2017-11-22(WED)', '2017-11-23(THU)', '2017-11-24(FRI)', '2017-11-25(SAT)', '2017-11-26(SUN)'
+        ];
+        var select_days = days[0];
+        var data_car = '';
+        var data_dbh = '';
+        var lon_center = 129.261415;
+        var lat_center = 35.544311;
+
+        var date;
+        var start_time = new Date(select_days.substring(0, 10) + ' 00:00:00:00');
+        var end_time = new Date(select_days.substring(0, 10) + ' 23:59:59:00');
+
+        $(document).ready(function () {
+            data_dbh = $('input[name="val"]').val();
+            data_car = $('input[name="car"]').val();
+            console.log(data_car);
+            show_map();
+        });
+
+        async function show_map() {
+            var cardRules = new Array;
+            var jsonObj = [];
+            var count_check = 1;
+            if($('input[name="car"]:checked').val() == 'ALL_CAR'){
+                data_car = 'CAR ';
+                count_check = 2;
+            }
+             for(var j = 0; j < count_check; j++){
+                await $.get('./Data Cleansing/' + select_days + '/' + data_car + ($('input[name="car"]:checked').val() == 'ALL_CAR'?(j+1):'') + '/ttyACM0.txt', function (data) {
+                    cardRules = data.split('\n');
+                    for (var i = 0; i < cardRules.length; i++) {
+                        var Obj = JSON.parse(cardRules[i]);
+                        if (Obj.hasOwnProperty(data_dbh)) {//ถ้ามี data จะเข้า
+                            let d = new Date(Obj['time']);
+                            d.setHours(d.getHours() + 2);
+                            let d_text = d.toTimeString();
+                            let s_text = start_time.toTimeString();
+                            let e_text = end_time.toTimeString();
+
+                            tmp = {
+                                'type': "Feature",
+                                'properties': {
+                                    "dbh": Obj[data_dbh],
+                                    "time": d_text
+                                },
+                                "geometry": {
+                                    "type": "Point",
+                                    "coordinates": [Obj['LNG'], Obj['LAT']]
+                                }
+                            };
+                            if (s_text <= d_text && d_text <= e_text) {
+                                jsonObj.push(tmp);
+                            }
+                        }
+                        if(i == Math.floor((cardRules.length-1)/2)){
+                            lat_center = Number(Obj['LAT']);
+                            lon_center = Number(Obj['LNG']);
+                        }
+                    };
+                });
+            }
+
+            mapboxgl.accessToken = 'pk.eyJ1IjoicGV6bDA1IiwiYSI6ImNrenpjOG9lejAwZ2YzZG8ya2J4ZW0yZ24ifQ.lxntHdvifA31_uM-eVRYFw';
+            const places = {
+                'type': 'FeatureCollection',
+                'features': jsonObj
+                
+            };
+            // console.log(places);
+            // console.log(lon_center + ' ' + lat_center);
+            const map = new mapboxgl.Map({
+                container: 'map', // container ID
+                style: 'mapbox://styles/pezl05/ckzzcbnzd000114muoq1fievy/draft', // style URL
+                center: [lon_center,lat_center], // starting position [lat, lng]
+                zoom: 14.5, // starting zoom
+                // minZoom: 14.5,
+                // maxZoom: 16
+            });
+            // console.log(places);
+            /* .on adds a listener for events to occur upon load. The function is called when the event is fired. */
+            map.on('load', function () {
+
+                /* Adds a source to the map's style. First parameter ('trees') is an id...*/
+                map.addSource('places', {
+                    /* ...the second parameter is the source. */
+                    "type": "geojson",
+                    /* Type of data. */
+                    "data": places /* Path to the data. */
+                });
+
+                /* Adds a Mapbox style layer to the map. */
+                /* The format of this code is a JSON (JavaScript Object Notation). Think of it like an address book,
+                 * where you have contacts ( eg 'heatmap-weight) and information about them, like phone number
+                 * ('property'), e-mail ('type'), etc. */
+                map.addLayer({
+                    "id": "places-heat",
+                    /* Reference id. */
+                    "type": "heatmap",
+                    /* Type of layer being created. */
+                    "source": "places",
+                    /* Source of the layer's data, as referred to above in addSource() */
+                    "maxzoom": 15,
+                    /* Maximum zoom level for this layer. If exceeded, this layer will not be displayed. */
+                    "paint": {
+                        /* Increase weight as diameter breast height increases. */
+                        "heatmap-weight": {
+                            "property": "dbh",
+                            "type": "exponential",
+                            "stops": [
+                                [1, 0],
+                                [62, 1]
+                            ]
+                        },
+                        /* Increase intensity as zoom level increases. */
+                        "heatmap-intensity": {
+                            "stops": [
+                                [11, 1],
+                                [15, 3]
+                            ]
+                        },
+                        /* Use sequential color palette to use exponentially as the weight increases. */
+                        "heatmap-color": [
+                            "interpolate", ["linear"],
+                            ["heatmap-density"],
+                            0, "rgba(236,222,239,0.5)",
+                            0.2, "rgba(179, 255, 0, 0.5)",
+                            0.4, "rgba(230, 184, 0, 0.5)",
+                            0.6, "rgba(230, 114, 0, 0.5)",
+                            0.8, "rgba(230, 43, 0, 0.5)"
+                        ],
+                        /* Increase radius as zoom increases. */
+                        "heatmap-radius": {
+                            "stops": [
+                                [11, 15],
+                                [15, 20]
+                            ]
+                        },
+                        /* Decrease opacity to transition into the circle layer. */
+                        "heatmap-opacity": {
+                            "default": 1,
+                            "stops": [
+                                [14, 1],
+                                [15, 0]
+                            ]
+                        },
+                    }
+                }, 'waterway-label'); /* The layer just described will go above the waterway-label. */
+
+                /* When zoomed in closely, the heat map disperses into points. This is the layer for points. */
+                map.addLayer({
+                    "id": "places-point",
+                    "type": "circle",
+                    "source": "places",
+                    "minzoom": 14,
+                    "paint": {
+                        /* Increase the radius of the circle as the zoom level and dbh value increases.
+                          The following three categories attribute different properties to the circles and zoom. */
+                        "circle-radius": {
+                            "property": "dbh",
+                            "type": "exponential",
+                            "stops": [
+                                [{
+                                    zoom: 15,
+                                    value: 1
+                                }, 5],
+                                [{
+                                    zoom: 15,
+                                    value: 62
+                                }, 10],
+                                [{
+                                    zoom: 22,
+                                    value: 1
+                                }, 20],
+                                [{
+                                    zoom: 22,
+                                    value: 62
+                                }, 50],
+                            ]
+                        },
+                        "circle-color": {
+                            "property": "dbh",
+                            "type": "exponential",
+                            "stops": [
+                                // [0, "rgba(0,153,102,1)"],
+                                // [2, "rgba(255,222,51,1)"],
+                                // [4, "rgba(255,153,51,1)"],
+                                // [6, "rgba(204,0,51,1)"],
+                                // [8, "rgba(102,0,153,1)"],
+                                // [10, "rgba(126,0,35,1)"]
+                                [0, "rgba(0,153,102,0)"],
+                                [0.1, "rgba(0,153,102,1)"],
+                                [51, "rgba(255,222,51,1)"],
+                                [101, "rgba(255,153,51,1)"],
+                                [151, "rgba(204,0,51,1)"],
+                                [201, "rgba(102,0,153,1)"],
+                                [301, "rgba(126,0,35,1)"]
+
+                            ]
+                        },
+                        "circle-stroke-color": "white",
+                        "circle-stroke-width": 1,
+                        "circle-opacity": {
+                            "stops": [
+                                [14, 0],
+                                [15, 1]
+                            ]
+                        }
+                    }
+                }, 'waterway-label'); /* Goes above the waterway-label. */
+            });
+            /* Click on tree to view dbh in a pop-up. */
+            /* Adds a listener for events of a specified type occurring on features in a specified style layer. */
+            map.on('click', 'places-point', function (e) {
+                new mapboxgl.Popup()
+                    .setLngLat(e.features[0].geometry.coordinates) /* Find & set the coordinates for the pop-up. */
+                    // .setHTML('<b>DBH:</b> ' + e.features[0].properties.dbh) /* Set and add the HTML to the pop-up. */
+                    .setHTML('<b>Korean Time : </b> ' + e.features[0].properties.time.substring(0, 8) + ' GMT+0900')
+                    .addTo(map); /* Add layer to the map. */
+
+            });
+        }
+
+        $('input[name="val"]').click(function () {
+            data_dbh = $('input[name="val"]:checked').val();
+            show_map();
+            console.log(data_dbh);
+        });
+        $('input[name="car"]').click(function () {
+            data_car = $('input[name="car"]:checked').val();
+            show_map();
+            console.log(data_car);
+        });
+
+        $('#select_date').change(function() {
+
+        });
+
+        $('#start_time').change(function() {
+            var time = $('#start_time').val();
+            if (time > $('#end_time').val()) {
+                $('#end_time').val('23:59');
+                end_time.setHours(23, 59);
+            }
+            start_time.setHours(time.substring(0, 2), time.substring(3));
+            show_map();
+        });
+        $('#end_time').change(function() {
+            var time = $('#end_time').val();
+            if (time < $('#start_time').val()) {
+                $('#end_time').val('23:59');
+                time = '23:59';
+            }
+            end_time.setHours(time.substring(0, 2), time.substring(3));
+            show_map();
+        }) 
+    </script>
+
+</body>
+
+</html>
+© 2022 GitHub, Inc. Terms Privacy Security Status Docs Contact GitHub Pricing API Training Blog About
